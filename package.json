@@ -1,0 +1,25 @@
+{
+  "name": "rl",
+  "version": "1.0.0",
+  "description": "Grid-based hide-and-seek RL sandbox with Node tfjs training and browser replay",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "train": "node --loader ts-node/esm src/training/runTraining.ts",
+    "serve": "npx http-server .",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^22.8.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.21.0",
+    "@tensorflow/tfjs-node": "^4.21.0"
+  }
+}
