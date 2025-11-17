@@ -44,6 +44,14 @@ export interface Observation {
   }[];
   self: AgentState;
   mapSize: { width: number; height: number };
+  features: {
+    nearestOpponentDx: number;
+    nearestOpponentDy: number;
+    nearestOpponentDistance: number;
+    nearestCoverDistance: number;
+    isSeen: boolean;
+    seesOpponent: boolean;
+  };
 }
 
 export interface StepResult {

@@ -81,6 +81,14 @@ export interface TrainingMetrics {
 }
 
 export function flattenObservation(obs: Observation): number[] {
-  // Use the local grid as the primary numerical input.
-  return obs.localGrid;
+  const { localGrid, features } = obs;
+  const norms = [
+    features.nearestOpponentDx / Math.max(1, obs.mapSize.width),
+    features.nearestOpponentDy / Math.max(1, obs.mapSize.height),
+    features.nearestOpponentDistance / Math.max(obs.mapSize.width, obs.mapSize.height),
+    features.nearestCoverDistance / Math.max(obs.mapSize.width, obs.mapSize.height),
+    features.isSeen ? 1 : 0,
+    features.seesOpponent ? 1 : 0,
+  ];
+  return [...localGrid, ...norms];
 }

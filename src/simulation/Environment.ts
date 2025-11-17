@@ -44,14 +44,10 @@ export class Environment {
     this.captureCount = 0;
 
     for (let i = 0; i < this.config.hiderCount; i++) {
-      this.agents.push(
-        this.spawnAgent(`H${i}`, AgentType.Hider, this.config.hiderTraits),
-      );
+      this.agents.push(this.spawnAgent(`H${i}`, AgentType.Hider, this.config.hiderTraits));
     }
     for (let i = 0; i < this.config.seekerCount; i++) {
-      this.agents.push(
-        this.spawnAgent(`S${i}`, AgentType.Seeker, this.config.seekerTraits),
-      );
+      this.agents.push(this.spawnAgent(`S${i}`, AgentType.Seeker, this.config.seekerTraits));
     }
   }
 
@@ -72,6 +68,10 @@ export class Environment {
     const vision = agent.traits.vision;
     const localGrid: number[] = [];
     const visibleAgents: Observation["visibleAgents"] = [];
+    let nearestOpponent = { dx: 0, dy: 0, dist: Number.POSITIVE_INFINITY };
+    let nearestCoverDist = Number.POSITIVE_INFINITY;
+    let isSeen = false;
+    let seesOpponent = false;
 
     for (let dy = -vision; dy <= vision; dy++) {
       for (let dx = -vision; dx <= vision; dx++) {
@@ -85,6 +85,8 @@ export class Environment {
         const cell = this.map.cells[y][x];
         if (cell === CellType.Wall) {
           localGrid.push(-1);
+          const dist = Math.abs(dx) + Math.abs(dy);
+          if (dist < nearestCoverDist) nearestCoverDist = dist;
           continue;
         }
 
@@ -99,6 +101,13 @@ export class Environment {
               dx,
               dy,
             });
+            if (isOpponent) {
+              seesOpponent = true;
+              const dist = Math.abs(dx) + Math.abs(dy);
+              if (dist < nearestOpponent.dist) {
+                nearestOpponent = { dx, dy, dist };
+              }
+            }
           }
         } else {
           localGrid.push(0);
@@ -106,11 +115,39 @@ export class Environment {
       }
     }
 
+    // Mark if any opponent can currently see this agent (simple Manhattan-vision check).
+    for (const opponent of this.agents) {
+      if (!opponent.alive || opponent.type === agent.type) continue;
+      const dManhattan =
+        Math.abs(opponent.position.x - agent.position.x) + Math.abs(opponent.position.y - agent.position.y);
+      if (dManhattan <= opponent.traits.vision) {
+        isSeen = true;
+        break;
+      }
+    }
+
+    // If no opponent was seen locally, fall back to a global nearest distance.
+    if (!isFinite(nearestOpponent.dist)) {
+      const dist = this.nearestOpponentDistance(agent, true);
+      if (isFinite(dist)) {
+        nearestOpponent = { dx: 0, dy: 0, dist };
+      }
+    }
+    if (!isFinite(nearestCoverDist)) nearestCoverDist = agent.traits.vision + 1;
+
     return {
       localGrid,
       visibleAgents,
       self: { ...agent, position: { ...agent.position } },
       mapSize: { width: this.map.width, height: this.map.height },
+      features: {
+        nearestOpponentDx: nearestOpponent.dx,
+        nearestOpponentDy: nearestOpponent.dy,
+        nearestOpponentDistance: nearestOpponent.dist,
+        nearestCoverDistance: nearestCoverDist,
+        isSeen,
+        seesOpponent,
+      },
     };
   }
 
@@ -134,7 +171,7 @@ export class Environment {
       this.moveAgent(agent, action);
     }
 
-    // Capture resolution: seekers on same tile as hiders
+    // Capture resolution: seekers on same tile / within adjacency / swapped tiles
     for (const seeker of this.agents.filter((a) => a.alive && a.type === AgentType.Seeker)) {
       for (const hider of this.agents.filter((a) => a.alive && a.type === AgentType.Hider)) {
         const sameTile = seeker.position.x === hider.position.x && seeker.position.y === hider.position.y;
@@ -150,7 +187,7 @@ export class Environment {
         if (sameTile || swapped || manhattan <= 1) {
           hider.alive = false;
           capturesThisStep.push(hider.id);
-          rewards.set(seeker.id, rewards.get(seeker.id)! + 5);
+          rewards.set(seeker.id, (rewards.get(seeker.id) ?? 0) + 5);
           rewards.set(hider.id, (rewards.get(hider.id) ?? 0) - 5);
         }
       }
@@ -164,11 +201,17 @@ export class Environment {
       const curr = this.nearestOpponentDistance(agent);
       if (prev !== undefined && isFinite(prev) && isFinite(curr)) {
         const delta = curr - prev;
-        const factor = 0.1;
+        const factor = 0.3;
         if (agent.type === AgentType.Hider) {
           rewards.set(agent.id, (rewards.get(agent.id) ?? 0) + delta * factor);
+          if (this.isSeen(agent)) {
+            rewards.set(agent.id, (rewards.get(agent.id) ?? 0) - 0.2);
+          }
         } else {
           rewards.set(agent.id, (rewards.get(agent.id) ?? 0) - delta * factor);
+          if (this.seesOpponent(agent)) {
+            rewards.set(agent.id, (rewards.get(agent.id) ?? 0) + 0.1);
+          }
         }
       }
     }
@@ -181,12 +224,9 @@ export class Environment {
       const seekers = this.agents.filter((a) => a.type === AgentType.Seeker);
 
       if (this.captureCount === 0) {
-        // No captures: penalize seekers, small survival bonus for hiders.
         seekers.forEach((s) => rewards.set(s.id, (rewards.get(s.id) ?? 0) - 2));
         hidersAlive.forEach((h) => rewards.set(h.id, (rewards.get(h.id) ?? 0) + 1));
       } else {
-        // Captures occurred: no extra survival bonus, seekers avoid penalty.
-        // Optional small bonus for remaining hiders if still alive after captures.
         hidersAlive.forEach((h) => rewards.set(h.id, (rewards.get(h.id) ?? 0) + 0.5));
       }
     }
@@ -237,9 +277,7 @@ export class Environment {
   }
 
   private findBlockingAgent(x: number, y: number, mover: AgentState): AgentState | undefined {
-    return this.agents.find(
-      (a) => a.id !== mover.id && a.alive && a.position.x === x && a.position.y === y,
-    );
+    return this.agents.find((a) => a.id !== mover.id && a.alive && a.position.x === x && a.position.y === y);
   }
 
   private requireAgent(agentId: string): AgentState {
@@ -252,7 +290,7 @@ export class Environment {
     return this.agents.filter((a) => a.type === AgentType.Hider && a.alive).length;
   }
 
-  private nearestOpponentDistance(agent: AgentState): number {
+  private nearestOpponentDistance(agent: AgentState, _global: boolean = false): number {
     let best = Number.POSITIVE_INFINITY;
     for (const other of this.agents) {
       if (!other.alive || other.type === agent.type) continue;
@@ -260,5 +298,29 @@ export class Environment {
       if (d < best) best = d;
     }
     return best;
+  }
+
+  private isSeen(agent: AgentState): boolean {
+    for (const opponent of this.agents) {
+      if (!opponent.alive || opponent.type === agent.type) continue;
+      const dManhattan =
+        Math.abs(opponent.position.x - agent.position.x) + Math.abs(opponent.position.y - agent.position.y);
+      if (dManhattan <= opponent.traits.vision) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private seesOpponent(agent: AgentState): boolean {
+    for (const opponent of this.agents) {
+      if (!opponent.alive || opponent.type === agent.type) continue;
+      const dManhattan =
+        Math.abs(opponent.position.x - agent.position.x) + Math.abs(opponent.position.y - agent.position.y);
+      if (dManhattan <= agent.traits.vision) {
+        return true;
+      }
+    }
+    return false;
   }
 }

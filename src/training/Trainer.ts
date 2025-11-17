@@ -49,8 +49,9 @@ export class Trainer {
 
     const env = new Environment(envConfig);
 
-    const hiderObsSize = Math.pow(this.config.hiderTraits.vision * 2 + 1, 2);
-    const seekerObsSize = Math.pow(this.config.seekerTraits.vision * 2 + 1, 2);
+    const featureExtra = 6; // extra normalized features appended in flattenObservation
+    const hiderObsSize = Math.pow(this.config.hiderTraits.vision * 2 + 1, 2) + featureExtra;
+    const seekerObsSize = Math.pow(this.config.seekerTraits.vision * 2 + 1, 2) + featureExtra;
     const hiderNet = new PolicyNetwork(hiderObsSize, ACTIONS.length, this.config.learningRate);
     const seekerNet = new PolicyNetwork(seekerObsSize, ACTIONS.length, this.config.learningRate);
     const hiderBuffer = new ReplayBuffer(this.config.replayCapacity);
