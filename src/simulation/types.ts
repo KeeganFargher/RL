@@ -1,57 +1,63 @@
+import { Obstacle, Pose, Vec2 } from "./geometry.js";
+
 export enum AgentType {
   Hider = "HIDER",
   Seeker = "SEEKER",
 }
 
-export type Action =
-  | "stay"
-  | "up"
-  | "down"
-  | "left"
-  | "right"
-  | "up-left"
-  | "up-right"
-  | "down-left"
-  | "down-right";
+export enum Action {
+  Idle = 0,
+  MoveForward = 1,
+  MoveBackward = 2,
+  StrafeLeft = 3,
+  StrafeRight = 4,
+  TurnLeft = 5,
+  TurnRight = 6,
+  PlaceObstacle = 7,
+}
 
 export interface AgentTraits {
-  speed: number; // cells per tick
-  vision: number; // radius in cells
-  stamina?: number; // optional future use
+  speed: number; // units per second
+  visionRange: number; // max vision distance
+  fovDegrees: number; // vision cone angle
+  turnRate?: number; // radians per second
 }
 
 export interface AgentState {
   id: string;
   type: AgentType;
-  traits: AgentTraits;
-  position: { x: number; y: number };
+  pose: Pose;
+  velocity: Vec2;
+  speed: number;
+  visionRange: number;
+  fovDegrees: number;
   alive: boolean;
-  energy?: number;
-}
-
-export enum CellType {
-  Empty = 0,
-  Wall = 1,
+  placementsRemaining: number;
+  placementCooldown: number;
+  lastAction?: Action;
 }
 
 export interface Observation {
-  localGrid: number[]; // flattened (vision*2+1)^2 values encoding walls/agents
+  rayDistances: number[]; // normalized distances (0-1) along evenly spaced rays inside the cone
   visibleAgents: {
     id: string;
     type: AgentType;
-    dx: number;
-    dy: number;
+    relAngle: number; // radians relative to heading
+    relDistance: number; // absolute distance
+    visibilityFraction: number; // portion of required hold satisfied (0-1)
   }[];
-  self: AgentState;
-  mapSize: { width: number; height: number };
-  features: {
-    nearestOpponentDx: number;
-    nearestOpponentDy: number;
-    nearestOpponentDistance: number;
-    nearestCoverDistance: number;
-    isSeen: boolean;
-    seesOpponent: boolean;
+  self: {
+    id: string;
+    type: AgentType;
+    heading: number;
+    speed: number;
+    placementsRemaining: number;
+    placementCooldown: number;
+    position: Vec2;
+    visionRange: number;
+    fovDegrees: number;
   };
+  mapSize: { width: number; height: number };
 }
 
 export interface StepResult {
@@ -59,15 +65,22 @@ export interface StepResult {
   done: boolean;
   observations: Map<string, Observation>;
   capturesThisStep: string[];
+  placedObstacles: Obstacle[];
 }
 
 export interface EnvironmentConfig {
-  width: number;
-  height: number;
+  arenaWidth: number;
+  arenaHeight: number;
   obstacleDensity: number;
   hiderCount: number;
   seekerCount: number;
   hiderTraits: AgentTraits;
   seekerTraits: AgentTraits;
   maxSteps: number;
+  tickDuration: number;
+  captureHoldSeconds: number;
+  placementCount: number;
+  placementCooldownSeconds: number;
+  visionRayCount: number;
+  staticObstacles?: Obstacle[];
 }

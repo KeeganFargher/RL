@@ -37,8 +37,8 @@ fileInput?.addEventListener("change", async () => {
 
 async function bootstrap() {
   try {
-    statusEl.textContent = " | Loading replay dist/replays/sample-replay.json";
-    const dataset = await loader.load("./dist/replays/sample-replay.json");
+    statusEl.textContent = " | Loading replay dist/replays/sample-free-movement.json";
+    const dataset = await loader.load("./dist/replays/sample-free-movement.json");
     setReplay(dataset);
   } catch (err) {
     console.warn("Failed to load default replay. Load your own file.", err);
@@ -76,6 +76,7 @@ function playEpisode(generation: GenerationSample) {
         step: 0,
         agents: [],
         captures: [],
+        placedObstacles: [],
       },
       generation,
     );

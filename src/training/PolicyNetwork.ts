@@ -3,6 +3,7 @@ import { Experience } from "./types.js";
 
 export class PolicyNetwork {
   private readonly model: tf.LayersModel;
+  private readonly targetModel: tf.LayersModel;
   private readonly actionCount: number;
   private readonly optimizer: tf.Optimizer;
 
@@ -19,8 +20,20 @@ export class PolicyNetwork {
         tf.layers.dense({ units: actionCount, activation: "linear" }),
       ],
     });
+    this.targetModel = tf.sequential({
+      layers: [
+        tf.layers.dense({
+          units: 64,
+          activation: "relu",
+          inputShape: [inputSize],
+        }),
+        tf.layers.dense({ units: 64, activation: "relu" }),
+        tf.layers.dense({ units: actionCount, activation: "linear" }),
+      ],
+    });
     this.optimizer = tf.train.adam(learningRate);
     this.model.compile({ optimizer: this.optimizer, loss: "meanSquaredError" });
+    this.syncTarget();
   }
 
   act(observation: number[], epsilon: number): number {
@@ -51,11 +64,11 @@ export class PolicyNetwork {
 
     const oneHotActions = tf.oneHot(actionTensor, this.actionCount);
 
-    await this.optimizer.minimize(() => {
+    this.optimizer.minimize(() => {
       const qPredAll = this.model.predict(obsBatch) as tf.Tensor2D;
       const qPred = tf.sum(tf.mul(qPredAll, oneHotActions), 1);
 
-      const qNextAll = this.model.predict(nextObsBatch) as tf.Tensor2D;
+      const qNextAll = this.targetModel.predict(nextObsBatch) as tf.Tensor2D;
       const qNextMax = qNextAll.max(1);
       const target = rewardTensor.add(
         qNextMax.mul(gamma).mul(tf.scalar(1).sub(doneTensor))
@@ -75,5 +88,17 @@ export class PolicyNetwork {
       doneTensor,
       oneHotActions,
     ]);
+  }
+
+  updateTarget(tau: number) {
+    const mainWeights = this.model.getWeights();
+    const targetWeights = this.targetModel.getWeights();
+    const mixed = targetWeights.map((target, i) => target.mul(1 - tau).add(mainWeights[i].mul(tau)));
+    this.targetModel.setWeights(mixed);
+  }
+
+  private syncTarget() {
+    const weights = this.model.getWeights();
+    this.targetModel.setWeights(weights.map((w) => w.clone()));
   }
 }

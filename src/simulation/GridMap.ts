@@ -1,5 +1,9 @@
-import { CellType } from "./types.js";
-import { createRng, Rng } from "../utils/random.js";
+import { createRng } from "../utils/random.js";
+
+export enum CellType {
+  Empty = 0,
+  Wall = 1,
+}
 
 export class GridMap {
   readonly width: number;
