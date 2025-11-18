@@ -1,0 +1,1 @@
+npm run train -- --generations 200 --arenaWidth 18 --arenaHeight 18 --obstacleDensity 0.15 --visionRayCount 21 --targetUpdateInterval 5 --trainWarmupSteps 400
